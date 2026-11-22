@@ -8,7 +8,6 @@ import { RestaurantesModule } from '../restaurantes/restaurantes.module';
 import { CardapioModule } from '../cardapio/cardapio.module';
 import { PagamentosModule } from '../pagamentos/pagamentos.module';
 import { NotificacoesModule } from '../notificacoes/notificacoes.module';
-import { LoggerService } from '../../shared/logger.service';
 
 @Module({
   imports: [
@@ -20,6 +19,6 @@ import { LoggerService } from '../../shared/logger.service';
     NotificacoesModule,
   ],
   controllers: [PedidosController],
-  providers: [PedidosService, LoggerService],
+  providers: [PedidosService],
 })
 export class PedidosModule {}

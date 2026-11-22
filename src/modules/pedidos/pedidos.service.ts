@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -24,15 +25,17 @@ export class PedidosService {
   ) {}
 
   async criar(dto: CriarPedidoDto): Promise<Pedido> {
-    const requestId = `req-${Date.now()}`; // VANTAGEM 3: Debug Fácil (ID único rastreia todo o fluxo)
+    // VANTAGEM 3: Debug Fácil. Um ID único é passado por todos os módulos,
+    // então um único filtro no log (ex.: grep req-ab12cd34) mostra o caminho inteiro.
+    const requestId = `req-${randomUUID().slice(0, 8)}`;
 
     // 1. Chamadas de função em memória entre os módulos (sem HTTP/rede)
     this.logger.log('PedidosService', '1. Validando cliente e restaurante...', requestId);
-    await this.usuariosService.validarCliente(dto.usuarioId);
-    await this.restaurantesService.verificarDisponibilidade(dto.restauranteId);
+    await this.usuariosService.validarCliente(dto.usuarioId, requestId);
+    await this.restaurantesService.verificarDisponibilidade(dto.restauranteId, requestId);
 
     this.logger.log('PedidosService', '2. Calculando itens no CardapioService...', requestId);
-    const valorTotal = await this.cardapioService.validarItensECalcularTotal(dto.itensIds);
+    const valorTotal = await this.cardapioService.validarItensECalcularTotal(dto.itensIds, requestId);
 
     // 2. VANTAGEM 1: Transação Única (ACID)
     // Pedido (módulo pedidos) e pagamento (módulo pagamentos) são gravados na mesma
@@ -51,7 +54,7 @@ export class PedidosService {
         this.logger.log('PedidosService', `Pedido ${pedido.id} gravado (ainda sem COMMIT)`, requestId);
 
         // Se lançar erro aqui, o pedido acima é desfeito pelo ROLLBACK automático.
-        await this.pagamentosService.cobrar(pedido.id, valorTotal, manager);
+        await this.pagamentosService.cobrar(pedido.id, valorTotal, manager, requestId);
 
         return pedido;
       });
@@ -62,7 +65,7 @@ export class PedidosService {
     this.logger.log('PedidosService', `COMMIT: pedido ${pedidoSalvo.id} e pagamento salvos juntos`, requestId);
 
     // 3. Notifica o restaurante só depois de confirmar a transação
-    await this.notificacoesService.avisarRestaurante(dto.restauranteId, pedidoSalvo.id);
+    await this.notificacoesService.avisarRestaurante(dto.restauranteId, pedidoSalvo.id, requestId);
     this.logger.log('PedidosService', '4. Pedido finalizado com sucesso!', requestId);
 
     return pedidoSalvo;
