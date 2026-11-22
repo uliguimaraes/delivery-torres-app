@@ -1,19 +1,32 @@
-import { Injectable } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Pagamento } from './pagamento.entity';
+
+// Gateway simulado: recusa cobranças acima desse valor (serve para demonstrar o rollback).
+const LIMITE_GATEWAY = 300;
 
 @Injectable()
 export class PagamentosService {
-  async cobrar(pedidoId: string, valor: number, manager?: EntityManager): Promise<Pagamento> {
-    const pagamento = new Pagamento();
-    pagamento.pedidoId = pedidoId;
-    pagamento.valor = valor;
-    pagamento.status = 'APROVADO';
+  constructor(
+    @InjectRepository(Pagamento)
+    private readonly pagamentosRepo: Repository<Pagamento>,
+  ) {}
 
-    if (manager) {
-      await manager.save(Pagamento, pagamento);
+  // Recebe o manager da transação aberta pelo PedidosService:
+  // o pagamento é gravado na MESMA transação do pedido.
+  async cobrar(pedidoId: string, valor: number, manager: EntityManager): Promise<Pagamento> {
+    if (valor > LIMITE_GATEWAY) {
+      throw new UnprocessableEntityException(
+        `Pagamento recusado pelo gateway (R$ ${valor} acima do limite de R$ ${LIMITE_GATEWAY})`,
+      );
     }
 
-    return pagamento;
+    const pagamento = manager.create(Pagamento, { pedidoId, valor, status: 'APROVADO' });
+    return manager.save(pagamento);
+  }
+
+  async listar(): Promise<Pagamento[]> {
+    return this.pagamentosRepo.find();
   }
 }
